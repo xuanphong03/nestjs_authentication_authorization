@@ -4,6 +4,7 @@ import {
   Get,
   HttpStatus,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -14,6 +15,8 @@ import { z } from 'zod';
 import { AuthService } from './auth.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { RegisterAuthDto } from './dto/register-auth.dto';
+import { sendEmail } from 'src/utils/mail';
+import { redis } from 'src/utils/redis';
 
 @Controller('auth')
 export class AuthController {
@@ -121,6 +124,47 @@ export class AuthController {
       success: true,
       message: 'SUCCESS',
       data: data,
+    });
+  }
+
+  @Get('/confirmAccount')
+  async getOtpCode(@Query() query, @Res() res: Response) {
+    const email = query?.email;
+    const user = await this.authService.findUserByField('email', email);
+    if (!user) {
+      return res.status(HttpStatus.CREATED).json({
+        success: false,
+        message: 'Email không tồn tại trong db',
+      });
+    }
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    await sendEmail(
+      email,
+      'Xác minh tài khoản',
+      `Mã OTP của bạn là ${otpCode}. Mã này chỉ có hiệu lực trong 1 phút`,
+    );
+    const redisStore = await redis;
+    await redisStore.set(`otpCode_${email}`, otpCode, { EX: 60 });
+    return res.status(HttpStatus.CREATED).json({
+      success: true,
+      message: 'SUCCESS',
+    });
+  }
+
+  @Post('/confirmAccount')
+  async confirmOtpCode(@Body() { email, otpCode }, @Res() res: Response) {
+    const redisStore = await redis;
+    const redisOtp = await redisStore.get(`otpCode_${email}`);
+
+    if (redisOtp !== otpCode) {
+      return res
+        .status(HttpStatus.BAD_REQUEST)
+        .json({ success: false, message: 'Mã OTP không hợp lệ' });
+    }
+    await redisStore.del(`otpCode_${email}`);
+    return res.status(HttpStatus.OK).json({
+      success: true,
+      message: 'Xác minh tài khoản thành công',
     });
   }
 }

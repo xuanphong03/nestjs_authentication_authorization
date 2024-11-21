@@ -41,7 +41,7 @@ export class AuthService {
     const user = await this.prisma.user.create({ data: body });
     const accessToken = await this.createAccessToken(user.id, user.email);
     const refreshToken = await this.createRefreshToken(user.id, user.email);
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, user };
   }
 
   async login({ email, password }: LoginAuthDto) {
@@ -65,7 +65,8 @@ export class AuthService {
     //     refreshToken,
     //   }),
     // );
-    return { accessToken, refreshToken };
+    delete user.password;
+    return { accessToken, refreshToken, user };
   }
 
   async refreshToken(userId: number, email: string) {
